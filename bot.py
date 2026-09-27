@@ -6,7 +6,8 @@ from aiogram.types import (
     KeyboardButton,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
-    WebAppInfo
+    WebAppInfo,
+    MenuButtonWebApp
 )
 from config import settings
 import crud
@@ -16,14 +17,41 @@ logger = logging.getLogger("posylka_kg.bot")
 bot = Bot(token=settings.BOT_TOKEN) if settings.BOT_TOKEN else None
 dp = Dispatcher()
 
+async def setup_bot_menu():
+    """
+    Автоматически настраивает нативную кнопку Web App в левом нижнем углу меню чата
+    """
+    if not bot or not settings.WEBAPP_URL:
+        return
+    try:
+        url = settings.WEBAPP_URL
+        if not url.startswith("https://") and not url.startswith("http://"):
+            url = f"https://{url}"
+        await bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(
+                text="📦 Посылка.kg",
+                web_app=WebAppInfo(url=url)
+            )
+        )
+        logger.info("Chat Menu Button configured with URL: %s", url)
+    except Exception as e:
+        logger.warning(f"Could not set chat menu button: {e}")
+
+
 def get_phone_keyboard() -> ReplyKeyboardMarkup:
     """Кнопка для отправки номера телефона"""
     button = KeyboardButton(text="📱 Отправить номер телефона", request_contact=True)
     return ReplyKeyboardMarkup(keyboard=[[button]], resize_keyboard=True, one_time_keyboard=True)
 
+
 def get_webapp_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
     """Кнопка для открытия Telegram Web App"""
-    webapp_url = f"{settings.WEBAPP_URL}?user_id={telegram_id}"
+    url = settings.WEBAPP_URL
+    if not url.startswith("https://") and not url.startswith("http://"):
+        url = f"https://{url}"
+
+    webapp_url = f"{url}?user_id={telegram_id}"
+    
     button = InlineKeyboardButton(
         text="📦 Открыть Посылка.kg",
         web_app=WebAppInfo(url=webapp_url)
@@ -73,7 +101,7 @@ async def handle_start(message: types.Message):
     await message.answer(
         f"Салам, <b>{full_name}</b>!\n\n"
         f"<b>Посылка.kg</b> — быстрые и надежные посылки по Кыргызстану, СНГ и РФ.\n\n"
-        f"Нажмите кнопку ниже, чтобы найти водителя или опубликовать рейс:",
+        f"Нажмите кнопку ниже или используйте кнопку Меню слева внизу, чтобы открыть приложение:",
         reply_markup=get_webapp_keyboard(user_id),
         parse_mode="HTML"
     )
@@ -103,7 +131,6 @@ async def handle_contact(message: types.Message):
             reply_markup=types.ReplyKeyboardRemove(),
             parse_mode="HTML"
         )
-        # Оповещение админа
         if settings.ADMIN_ID and bot:
             try:
                 await bot.send_message(
@@ -132,7 +159,6 @@ async def handle_admin(message: types.Message):
         return
     await message.answer(
         "🛠 <b>Панель администратора Посылка.kg</b>\n\n"
-        "БД: kg.db активна.\n"
-        "Для просмотра модерации используйте WebApp интерфейс админа.",
+        "БД: kg.db активна.",
         parse_mode="HTML"
     )

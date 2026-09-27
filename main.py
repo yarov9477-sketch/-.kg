@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from config import settings
 import database
 import crud
-from bot import bot, dp
+from bot import bot, dp, setup_bot_menu
 
 # Настройка логирования
 logging.basicConfig(
@@ -32,6 +32,7 @@ async def lifespan(app: FastAPI):
     bot_task = None
     if bot and settings.BOT_TOKEN:
         logger.info("Starting Telegram Bot Polling...")
+        await setup_bot_menu()
         bot_task = asyncio.create_task(dp.start_polling(bot))
 
     yield
@@ -110,11 +111,14 @@ class CreateReportRequest(BaseModel):
 @app.get("/")
 async def get_webapp_index(request: Request, user_id: Optional[int] = None):
     """Главная страница Telegram Web App"""
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "user_id": user_id or 0,
-        "app_title": "Посылка.kg"
-    })
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html",
+        context={
+            "user_id": user_id or 0,
+            "app_title": "Посылка.kg"
+        }
+    )
 
 
 @app.get("/api/cities")
