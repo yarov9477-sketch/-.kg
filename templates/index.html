@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Посылка.kg — Передачи межгород и СНГ</title>
+
+  <!-- Telegram WebApp SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <!-- Tailwind CSS CDN & Custom Config -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              black: '#0d0f12',
+              card: '#16191f',
+              border: '#242a35',
+              hover: '#1e232b',
+              green: '#10b981',
+              greenDark: '#059669',
+              greenLight: '#34d399',
+              accent: '#3b82f6',
+              danger: '#ef4444'
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Alpine.js for lightweight, reactive state -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <!-- Lucide Custom SVG Icons CDN for crisp high-end vector icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    /* Плавные физичные микро-анимации 150-200ms */
+    .btn-tactile {
+      transition: transform 120ms ease, background-color 150ms ease, border-color 150ms ease;
+      touch-action: manipulation;
+    }
+    .btn-tactile:active {
+      transform: scale(0.97);
+    }
+    .card-enter {
+      animation: fadeInCard 180ms ease-in-out;
+    }
+    @keyframes fadeInCard {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    /* Скрытие полосы прокрутки для нативного вида */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+
+<body class="bg-[#0d0f12] text-zinc-100 min-h-screen font-sans antialiased select-none pb-24"
+      x-data="posylkaApp()"
+      x-init="init()">
+
+  <!-- ===================================================== -->
+  <!-- 1. ЗАЩИТНЫЙ ЭКРАН СПАМ-БЛОКИРОВКИ (ANTI-SPAM LOCKOUT) -->
+  <!-- ===================================================== -->
+  <div x-show="isSpamBlocked" 
+       x-cloak
+       class="fixed inset-0 z-50 bg-[#0d0f12]/98 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center card-enter">
+    <div class="w-20 h-20 rounded-2xl bg-red-950/40 border border-red-800/60 flex items-center justify-center mb-6">
+      <i data-lucide="shield-alert" class="w-10 h-10 text-red-500"></i>
+    </div>
+    <h2 class="text-2xl font-bold text-white mb-2">Доступ ограничен</h2>
+    <p class="text-zinc-400 text-sm max-w-xs mb-6">
+      Вы совершили слишком много действий. В целях безопасности системы включен защитный таймер на 30 минут.
+    </p>
+    <div class="bg-[#16191f] border border-[#242a35] rounded-xl px-6 py-4 mb-6">
+      <div class="text-xs text-zinc-500 uppercase tracking-wider mb-1 font-semibold">Разблокировка через</div>
+      <div class="text-3xl font-mono font-bold text-emerald-400" x-text="formatCountdown(spamRemainingSeconds)">00:00</div>
+    </div>
+    <button @click="checkSpamStatus()" class="btn-tactile w-full max-w-xs py-3.5 bg-[#242a35] hover:bg-[#2c3340] text-zinc-200 font-bold rounded-xl text-sm">
+      Проверить статус
+    </button>
+  </div>
+
+
+  <!-- ===================================================== -->
+  <!-- 2. ВЕРХНИЙ ХЕДЕР И БЫСТРЫЕ МАРШРУТЫ                   -->
+  <!-- ===================================================== -->
+  <header class="sticky top-0 z-30 bg-[#0d0f12]/90 backdrop-blur-lg border-b border-[#242a35] px-4 py-3">
+    <div class="flex items-center justify-between mb-3">
+      <div class="flex items-center space-x-2.5">
+        <div class="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
+          <i data-lucide="package-check" class="w-5 h-5 text-emerald-400"></i>
+        </div>
+        <div>
+          <h1 class="text-base font-extrabold tracking-tight text-white flex items-center gap-1.5">
+            ПОСЫЛКА<span class="text-emerald-400">.KG</span>
+          </h1>
+          <p class="text-[11px] text-zinc-400 font-medium">Межгород & СНГ</p>
+        </div>
+      </div>
+
+      <!-- Переключатель роли: Отправитель / Водитель -->
+      <div class="flex bg-[#16191f] p-1 rounded-xl border border-[#242a35]">
+        <button @click="currentTab = 'feed'; haptic()"
+                :class="currentTab === 'feed' ? 'bg-[#242a35] text-white font-bold' : 'text-zinc-400'"
+                class="btn-tactile px-3 py-1.5 rounded-lg text-xs transition">
+          Лента
+        </button>
+        <button @click="currentTab = 'driver'; haptic(); loadMyTrips()"
+                :class="currentTab === 'driver' ? 'bg-emerald-600 text-white font-bold' : 'text-zinc-400'"
+                class="btn-tactile px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1">
+          <i data-lucide="truck" class="w-3.5 h-3.5"></i>
+          Водитель
+        </button>
+      </div>
+    </div>
+
+    <!-- Поиск направления (Город откуда -> Город куда) -->
+    <div x-show="currentTab === 'feed'" class="space-y-2">
+      <div class="grid grid-cols-2 gap-2">
+        <div class="relative">
+          <label class="block text-[10px] uppercase font-bold text-zinc-400 mb-0.5 ml-1">Откуда</label>
+          <select x-model="selectedFromCity" @change="fetchFeed()"
+                  class="w-full bg-[#16191f] border border-[#242a35] text-white text-xs font-semibold rounded-xl px-3 py-2.5 appearance-none focus:outline-none focus:border-emerald-500">
+            <option value="">Все города</option>
+            <template x-for="city in cities" :key="city">
+              <option :value="city" x-text="city"></option>
+            </template>
+          </select>
+        </div>
+        <div class="relative">
+          <label class="block text-[10px] uppercase font-bold text-zinc-400 mb-0.5 ml-1">Куда</label>
+          <select x-model="selectedToCity" @change="fetchFeed()"
+                  class="w-full bg-[#16191f] border border-[#242a35] text-white text-xs font-semibold rounded-xl px-3 py-2.5 appearance-none focus:outline-none focus:border-emerald-500">
+            <option value="">Все направления</option>
+            <template x-for="city in cities" :key="city">
+              <option :value="city" x-text="city"></option>
+            </template>
+          </select>
+        </div>
+      </div>
+
+      <!-- Фильтр типов груза (горизонтальный скролл) -->
+      <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1">
+        <template x-for="type in cargoTypes" :key="type">
+          <button @click="selectedCargo = type; fetchFeed(); haptic()"
+                  :class="selectedCargo === type ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold' : 'bg-[#16191f] border-[#242a35] text-zinc-400'"
+                  class="btn-tactile whitespace-nowrap px-3 py-1.5 rounded-lg border text-[11px] flex items-center gap-1.5">
+            <span x-text="type"></span>
+          </button>
+        </template>
+      </div>
+    </div>
+  </header>
+
+
+  <!-- ===================================================== -->
+  <!-- 3. ВКЛАДКА 1: ЛЕНТА РЕЙСОВ ДЛЯ ОТПРАВИТЕЛЕЙ            -->
+  <!-- ===================================================== -->
+  <main x-show="currentTab === 'feed'" class="p-4 space-y-3 max-w-lg mx-auto">
+    
+    <!-- Загрузка -->
+    <div x-show="loading" class="text-center py-12 text-zinc-500 text-sm">
+      <div class="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+      Поиск актуальных рейсов...
+    </div>
+
+    <!-- Пустая выдача -->
+    <div x-show="!loading && trips.length === 0" class="text-center py-16 px-4 bg-[#16191f] rounded-2xl border border-[#242a35] card-enter">
+      <div class="w-14 h-14 rounded-2xl bg-zinc-800/80 flex items-center justify-center mx-auto mb-3">
+        <i data-lucide="map-pin-off" class="w-7 h-7 text-zinc-500"></i>
+      </div>
+      <h3 class="text-base font-bold text-zinc-200">Рейсов по маршруту не найдено</h3>
+      <p class="text-xs text-zinc-400 mt-1 max-w-xs mx-auto">
+        Попробуйте выбрать другие города или сбросить фильтр.
+      </p>
+      <button @click="resetFilters()" class="btn-tactile mt-4 px-4 py-2 bg-[#242a35] text-xs font-bold rounded-xl text-zinc-200">
+        Сбросить фильтры
+      </button>
+    </div>
+
+    <!-- Карточки рейсов -->
+    <template x-for="trip in trips" :key="trip.id">
+      <div class="bg-[#16191f] border border-[#242a35] hover:border-zinc-600/60 rounded-2xl p-4 shadow-xl card-enter relative overflow-hidden">
+        
+        <!-- Верхняя плашка: Маршрут + Цена -->
+        <div class="flex items-start justify-between gap-2 mb-2.5">
+          <div>
+            <div class="flex items-center gap-2 text-base font-extrabold text-white tracking-tight">
+              <span x-text="trip.from_city"></span>
+              <i data-lucide="arrow-right" class="w-4 h-4 text-emerald-400 shrink-0"></i>
+              <span x-text="trip.to_city"></span>
+            </div>
+            
+            <div class="flex items-center gap-2 mt-1">
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-300 text-[11px] font-semibold border border-zinc-700">
+                <i data-lucide="clock" class="w-3 h-3 text-zinc-400"></i>
+                <span x-text="trip.departure_time_type"></span>
+              </span>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-zinc-800/80 text-zinc-400 text-[11px] font-medium">
+                <i data-lucide="box" class="w-3 h-3"></i>
+                <span x-text="trip.cargo_type"></span>
+              </span>
+            </div>
+          </div>
+
+          <!-- Крупная цена -->
+          <div class="text-right shrink-0">
+            <div class="text-lg font-black text-emerald-400 font-mono">
+              <span x-text="trip.price"></span> <span class="text-xs font-bold text-zinc-400">сом</span>
+            </div>
+            <div class="text-[10px] text-zinc-500 font-medium">за доставку</div>
+          </div>
+        </div>
+
+        <!-- Информация о водителе & Верификация -->
+        <div class="flex items-center justify-between py-2 border-t border-b border-[#242a35] my-3">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center font-bold text-xs text-zinc-200"
+                 x-text="trip.driver_name.charAt(0)">
+            </div>
+            <div>
+              <div class="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
+                <span x-text="trip.driver_name"></span>
+                <!-- Зеленый бейдж верификации -->
+                <template x-if="trip.is_verified">
+                  <span class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded bg-emerald-950/80 border border-emerald-600/50 text-[10px] text-emerald-400 font-bold">
+                    <i data-lucide="check-circle" class="w-3 h-3 text-emerald-400"></i>
+                    <span>✓ Верифицирован</span>
+                  </span>
+                </template>
+              </div>
+              <div class="text-[11px] text-zinc-400 flex items-center gap-1 mt-0.5">
+                <i data-lucide="star" class="w-3 h-3 text-amber-400 fill-amber-400"></i>
+                <span class="font-bold text-zinc-200" x-text="trip.average_rating"></span>
+                <span class="text-zinc-500">(<span x-text="trip.reviews_count"></span> отзывов)</span>
+              </div>
+            </div>
+          </div>
+
+          <button @click="openReportModal(trip); haptic()" class="text-zinc-500 hover:text-red-400 p-1 rounded-lg">
+            <i data-lucide="flag" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+
+        <!-- КНОПКИ СВЯЗИ (Крупные, четкие для водителя и отправителя) -->
+        <div class="grid grid-cols-3 gap-2">
+          <!-- Звонок (Зеленый акцент) -->
+          <a :href="'tel:' + trip.driver_phone" 
+             @click="recordAction('call_driver')"
+             class="btn-tactile bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs py-3 rounded-xl flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-950/40">
+            <i data-lucide="phone-call" class="w-4 h-4"></i>
+            <span>Звонок</span>
+          </a>
+
+          <!-- WhatsApp -->
+          <a :href="'https://wa.me/' + cleanPhone(trip.driver_phone)" 
+             target="_blank"
+             @click="recordAction('whatsapp_driver')"
+             class="btn-tactile bg-[#25D366]/15 border border-[#25D366]/40 hover:bg-[#25D366]/25 text-[#25D366] font-bold text-xs py-3 rounded-xl flex items-center justify-center gap-1.5">
+            <i data-lucide="message-circle" class="w-4 h-4"></i>
+            <span>WhatsApp</span>
+          </a>
+
+          <!-- Забронировать / Отклик -->
+          <button @click="bookTrip(trip); haptic()"
+                  class="btn-tactile bg-[#242a35] hover:bg-[#2e3644] text-zinc-200 font-bold text-xs py-3 rounded-xl flex items-center justify-center gap-1.5">
+            <i data-lucide="send" class="w-3.5 h-3.5"></i>
+            <span>Бронь</span>
+          </button>
+        </div>
+      </div>
+    </template>
+  </main>
+
+
+  <!-- ===================================================== -->
+  <!-- 4. ВКЛАДКА 2: КАБИНЕТ ВОДИТЕЛЯ (CRUD РЕЙСОВ)          -->
+  <!-- ===================================================== -->
+  <main x-show="currentTab === 'driver'" class="p-4 space-y-4 max-w-lg mx-auto" x-cloak>
+    
+    <!-- Карточка публикации нового рейса -->
+    <div class="bg-[#16191f] border border-[#242a35] rounded-2xl p-4 shadow-xl card-enter">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-extrabold text-white flex items-center gap-2">
+          <i data-lucide="plus-circle" class="w-4 h-4 text-emerald-400"></i>
+          Опубликовать рейс за 30 сек
+        </h2>
+      </div>
+
+      <form @submit.prevent="submitNewTrip()" class="space-y-3">
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[11px] font-bold text-zinc-400 mb-1">Откуда</label>
+            <select x-model="newTrip.from_city" required
+                    class="w-full bg-[#0d0f12] border border-[#242a35] text-white text-xs font-semibold rounded-xl px-3 py-2.5">
+              <template x-for="city in cities" :key="city">
+                <option :value="city" x-text="city"></option>
+              </template>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-zinc-400 mb-1">Куда</label>
+            <select x-model="newTrip.to_city" required
+                    class="w-full bg-[#0d0f12] border border-[#242a35] text-white text-xs font-semibold rounded-xl px-3 py-2.5">
+              <template x-for="city in cities" :key="city">
+                <option :value="city" x-text="city"></option>
+              </template>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[11px] font-bold text-zinc-400 mb-1">Время выезда</label>
+            <select x-model="newTrip.departure_time_type"
+                    class="w-full bg-[#0d0f12] border border-[#242a35] text-white text-xs font-semibold rounded-xl px-3 py-2.5">
+              <option value="СЕГОДНЯ">Сегодня</option>
+              <option value="ЗАВТРА">Завтра</option>
+              <option value="НА ДНЯХ">На днях</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-zinc-400 mb-1">Тип груза</label>
+            <select x-model="newTrip.cargo_type"
+                    class="w-full bg-[#0d0f12] border border-[#242a35] text-white text-xs font-semibold rounded-xl px-3 py-2.5">
+              <option value="ЛЮБОЙ">Любой груз</option>
+              <option value="ДОКУМЕНТЫ">Документы</option>
+              <option value="МАЛЕНЬКАЯ ПОСЫЛКА">Маленькая посылка</option>
+              <option value="КОРОБКА">Коробка</option>
+              <option value="КРУПНОГАБАРИТ">Крупногабарит</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-[11px] font-bold text-zinc-400 mb-1">Цена за передачу (сом)</label>
+          <input type="number" x-model="newTrip.price" placeholder="например: 500" required min="50" step="50"
+                 class="w-full bg-[#0d0f12] border border-[#242a35] text-emerald-400 font-mono text-base font-bold rounded-xl px-3 py-2.5 focus:border-emerald-500 focus:outline-none" />
+        </div>
+
+        <button type="submit"
+                class="btn-tactile w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-sm rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/50">
+          <i data-lucide="check" class="w-4 h-4"></i>
+          Опубликовать рейс
+        </button>
+      </form>
+    </div>
+
+    <!-- Список моих рейсов водителя -->
+    <div class="space-y-3">
+      <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-400 ml-1">Мои объявления</h3>
+      
+      <template x-if="myTrips.length === 0">
+        <div class="text-center py-8 bg-[#16191f] border border-[#242a35] rounded-2xl text-zinc-500 text-xs">
+          У вас пока нет опубликованных рейсов.
+        </div>
+      </template>
+
+      <template x-for="mt in myTrips" :key="mt.id">
+        <div class="bg-[#16191f] border border-[#242a35] rounded-2xl p-3.5 card-enter">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-sm font-bold text-white flex items-center gap-2">
+              <span x-text="mt.from_city"></span>
+              <i data-lucide="arrow-right" class="w-3.5 h-3.5 text-zinc-400"></i>
+              <span x-text="mt.to_city"></span>
+            </div>
+            <span :class="mt.status === 'ACTIVE' ? 'bg-emerald-950 text-emerald-400 border-emerald-800' : 'bg-zinc-800 text-zinc-400 border-zinc-700'"
+                  class="text-[10px] font-bold px-2 py-0.5 rounded border"
+                  x-text="mt.status === 'ACTIVE' ? 'АКТИВЕН' : 'ЗАВЕРШЕН'">
+            </span>
+          </div>
+
+          <div class="flex items-center justify-between text-xs text-zinc-400 mb-3">
+            <span>Выезд: <b class="text-zinc-200" x-text="mt.departure_time_type"></b></span>
+            <span class="text-emerald-400 font-mono font-bold"><span x-text="mt.price"></span> сом</span>
+          </div>
+
+          <!-- Быстрое управление в 1 клик -->
+          <div class="flex gap-2">
+            <button @click="quickEditPrice(mt)"
+                    class="btn-tactile flex-1 py-2 bg-[#242a35] hover:bg-[#2c3340] text-zinc-200 text-xs font-bold rounded-lg flex items-center justify-center gap-1">
+              <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+              Изменить цену
+            </button>
+            <button @click="closeTrip(mt.id)"
+                    x-show="mt.status === 'ACTIVE'"
+                    class="btn-tactile flex-1 py-2 bg-red-950/40 border border-red-800/40 text-red-400 text-xs font-bold rounded-lg flex items-center justify-center gap-1">
+              <i data-lucide="check-square" class="w-3.5 h-3.5"></i>
+              Завершить рейс
+            </button>
+          </div>
+        </div>
+      </template>
+    </div>
+  </main>
+
+
+  <!-- ===================================================== -->
+  <!-- 5. МОДАЛЬНОЕ ОКНО: ЖАЛОБА НА ВОДИТЕЛЯ                 -->
+  <!-- ===================================================== -->
+  <div x-show="showReportModal" x-cloak class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
+    <div class="bg-[#16191f] border border-[#242a35] rounded-3xl w-full max-w-sm p-5 card-enter">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-400"></i>
+          Пожаловаться
+        </h3>
+        <button @click="showReportModal = false" class="p-1 text-zinc-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <p class="text-xs text-zinc-400 mb-3">Водитель: <b class="text-zinc-200" x-text="reportingTrip?.driver_name"></b></p>
+
+      <div class="space-y-3">
+        <div>
+          <label class="block text-[11px] font-bold text-zinc-400 mb-1">Причина жалобы</label>
+          <select x-model="reportReason" class="w-full bg-[#0d0f12] border border-[#242a35] text-white text-xs font-semibold rounded-xl px-3 py-2.5">
+            <option value="НЕВЫЕЗД_ИЛИ_ОТМЕНА">Не выехал / Отменил рейс</option>
+            <option value="ЗАВЫШЕНИЕ_ЦЕНЫ">Завысил цену на месте</option>
+            <option value="ПОВРЕЖДЕНИЕ_ГРУЗА">Повредил посылку</option>
+            <option value="ГРУБОСТЬ">Грубое общение / Мошенничество</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-zinc-400 mb-1">Подробности</label>
+          <textarea x-model="reportDescription" rows="3" placeholder="Опишите ситуацию..."
+                    class="w-full bg-[#0d0f12] border border-[#242a35] text-white text-xs rounded-xl p-3 focus:outline-none focus:border-red-500"></textarea>
+        </div>
+
+        <button @click="submitReport()" class="btn-tactile w-full py-3 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl">
+          Отправить жалобу
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ===================================================== -->
+  <!-- 6. ТАКТИЛЬНЫЙ TOAST ОПОВЕЩЕНИЙ                         -->
+  <!-- ===================================================== -->
+  <div x-show="toast.show" 
+       x-cloak
+       class="fixed bottom-6 left-4 right-4 max-w-sm mx-auto z-50 bg-[#16191f] border border-emerald-500/50 shadow-2xl rounded-2xl p-3.5 flex items-center gap-3 card-enter">
+    <div class="w-7 h-7 rounded-xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+      <i data-lucide="check" class="w-4 h-4 text-emerald-400"></i>
+    </div>
+    <div class="text-xs font-semibold text-zinc-100 flex-1" x-text="toast.message"></div>
+  </div>
+
+
+  <!-- ===================================================== -->
+  <!-- JAVASCRIPT ЛОГИКА (ALPINE.JS & TWA INTEGRATION)       -->
+  <!-- ===================================================== -->
+  <script>
+    function posylkaApp() {
+      return {
+        tg: window.Telegram?.WebApp || null,
+        userId: {{ user_id or 0 }},
+        currentTab: 'feed',
+        loading: false,
+        cities: [],
+        cargoTypes: ['ЛЮБОЙ', 'ДОКУМЕНТЫ', 'МАЛЕНЬКАЯ ПОСЫЛКА', 'КОРОБКА', 'КРУПНОГАБАРИТ'],
+        selectedFromCity: '',
+        selectedToCity: '',
+        selectedCargo: 'ЛЮБОЙ',
+        trips: [],
+        myTrips: [],
+        
+        // Анти-спам состояние
+        isSpamBlocked: false,
+        spamRemainingSeconds: 0,
+        spamTimerInterval: null,
+
+        // Форма нового рейса
+        newTrip: {
+          from_city: 'Бишкек',
+          to_city: 'Ош',
+          departure_time_type: 'СЕГОДНЯ',
+          cargo_type: 'ЛЮБОЙ',
+          price: 500
+        },
+
+        // Жалобы
+        showReportModal: false,
+        reportingTrip: null,
+        reportReason: 'НЕВЫЕЗД_ИЛИ_ОТМЕНА',
+        reportDescription: '',
+
+        // Toast
+        toast: { show: false, message: '' },
+
+        async init() {
+          if (this.tg) {
+            this.tg.expand();
+            this.tg.ready();
+            if (this.tg.initDataUnsafe?.user?.id) {
+              this.userId = this.tg.initDataUnsafe.user.id;
+            }
+          }
+          await this.loadCities();
+          await this.checkSpamStatus();
+          await this.fetchFeed();
+          this.$nextTick(() => { lucide.createIcons(); });
+        },
+
+        haptic() {
+          if (this.tg?.HapticFeedback) {
+            this.tg.HapticFeedback.impactOccurred('medium');
+          }
+        },
+
+        showNotification(msg) {
+          this.toast.message = msg;
+          this.toast.show = true;
+          this.$nextTick(() => lucide.createIcons());
+          setTimeout(() => { this.toast.show = false; }, 3000);
+        },
+
+        cleanPhone(phone) {
+          return (phone || '').replace(/[^0-9]/g, '');
+        },
+
+        formatCountdown(sec) {
+          const m = Math.floor(sec / 60).toString().padStart(2, '0');
+          const s = (sec % 60).toString().padStart(2, '0');
+          return `${m}:${s}`;
+        },
+
+        async loadCities() {
+          try {
+            const res = await fetch('/api/cities');
+            const data = await res.json();
+            this.cities = data.cities || ['Бишкек', 'Ош', 'Жалал-Абад', 'Каракол', 'Нарын', 'Талас', 'Баткен', 'Москва'];
+            if (this.cities.length > 1) {
+              this.newTrip.from_city = this.cities[0];
+              this.newTrip.to_city = this.cities[1];
+            }
+          } catch (e) {
+            console.error('Cities load error', e);
+          }
+        },
+
+        async checkSpamStatus() {
+          try {
+            const res = await fetch(`/api/anti-spam/check?user_id=${this.userId}&action=view`);
+            const data = await res.json();
+            if (data.blocked) {
+              this.isSpamBlocked = true;
+              this.spamRemainingSeconds = data.remaining_seconds;
+              this.startSpamCountdown();
+            } else {
+              this.isSpamBlocked = false;
+              if (this.spamTimerInterval) clearInterval(this.spamTimerInterval);
+            }
+          } catch (e) {
+            console.error(e);
+          }
+        },
+
+        startSpamCountdown() {
+          if (this.spamTimerInterval) clearInterval(this.spamTimerInterval);
+          this.spamTimerInterval = setInterval(() => {
+            if (this.spamRemainingSeconds > 0) {
+              this.spamRemainingSeconds--;
+            } else {
+              this.isSpamBlocked = false;
+              clearInterval(this.spamTimerInterval);
+            }
+          }, 1000);
+        },
+
+        async recordAction(actionType) {
+          this.haptic();
+          try {
+            const res = await fetch(`/api/anti-spam/check?user_id=${this.userId}&action=${actionType}`, { method: 'POST' });
+            const data = await res.json();
+            if (data.blocked) {
+              this.isSpamBlocked = true;
+              this.spamRemainingSeconds = data.remaining_seconds;
+              this.startSpamCountdown();
+            }
+          } catch (e) {}
+        },
+
+        async fetchFeed() {
+          this.loading = true;
+          try {
+            let url = `/api/feed?`;
+            if (this.selectedFromCity) url += `from_city=${encodeURIComponent(this.selectedFromCity)}&`;
+            if (this.selectedToCity) url += `to_city=${encodeURIComponent(this.selectedToCity)}&`;
+            if (this.selectedCargo && this.selectedCargo !== 'ЛЮБОЙ') url += `cargo_type=${encodeURIComponent(this.selectedCargo)}&`;
+
+            const res = await fetch(url);
+            const data = await res.json();
+            this.trips = data.trips || [];
+          } catch (e) {
+            console.error(e);
+          } finally {
+            this.loading = false;
+            this.$nextTick(() => { lucide.createIcons(); });
+          }
+        },
+
+        resetFilters() {
+          this.selectedFromCity = '';
+          this.selectedToCity = '';
+          this.selectedCargo = 'ЛЮБОЙ';
+          this.fetchFeed();
+        },
+
+        async bookTrip(trip) {
+          await this.recordAction('book_click');
+          if (this.isSpamBlocked) return;
+          
+          try {
+            const res = await fetch('/api/orders', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                trip_id: trip.id,
+                sender_id: this.userId,
+                extra_metadata: { notes: 'Бронь через Telegram Web App' }
+              })
+            });
+            const data = await res.json();
+            if (data.success) {
+              this.showNotification(`Бронь передана водителю ${trip.driver_name}. Свяжитесь по кнопке звонка.`);
+            }
+          } catch (e) {
+            this.showNotification('Ошибка при бронировании');
+          }
+        },
+
+        async loadMyTrips() {
+          try {
+            const res = await fetch(`/api/trips/my?driver_id=${this.userId}`);
+            const data = await res.json();
+            this.myTrips = data.trips || [];
+            this.$nextTick(() => { lucide.createIcons(); });
+          } catch (e) {
+            console.error(e);
+          }
+        },
+
+        async submitNewTrip() {
+          await this.recordAction('create_trip');
+          if (this.isSpamBlocked) return;
+
+          try {
+            const res = await fetch('/api/trips', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                driver_id: this.userId,
+                from_city: this.newTrip.from_city,
+                to_city: this.newTrip.to_city,
+                cargo_type: this.newTrip.cargo_type,
+                departure_time_type: this.newTrip.departure_time_type,
+                price: parseInt(this.newTrip.price, 10),
+                extra_metadata: {}
+              })
+            });
+            const data = await res.json();
+            if (data.success) {
+              this.showNotification('✓ Рейс успешно опубликован!');
+              await this.loadMyTrips();
+            }
+          } catch (e) {
+            this.showNotification('Ошибка публикации рейса');
+          }
+        },
+
+        async quickEditPrice(trip) {
+          const newP = prompt('Введите новую цену в сомах:', trip.price);
+          if (!newP || isNaN(newP)) return;
+          try {
+            await fetch(`/api/trips/${trip.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ driver_id: this.userId, price: parseInt(newP, 10) })
+            });
+            this.showNotification('Цена обновлена');
+            await this.loadMyTrips();
+          } catch (e) {}
+        },
+
+        async closeTrip(tripId) {
+          if (!confirm('Завершить и снять рейс с публикации?')) return;
+          try {
+            await fetch(`/api/trips/${tripId}/close?driver_id=${this.userId}`, { method: 'POST' });
+            this.showNotification('Рейс завершен');
+            await this.loadMyTrips();
+          } catch (e) {}
+        },
+
+        openReportModal(trip) {
+          this.reportingTrip = trip;
+          this.showReportModal = true;
+          this.$nextTick(() => lucide.createIcons());
+        },
+
+        async submitReport() {
+          try {
+            await fetch('/api/reports', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                reporter_id: this.userId,
+                reported_driver_id: this.reportingTrip.driver_id,
+                reason: this.reportReason,
+                description: this.reportDescription
+              })
+            });
+            this.showReportModal = false;
+            this.showNotification('Жалоба принята на рассмотрение');
+          } catch (e) {
+            this.showNotification('Ошибка отправки жалобы');
+          }
+        }
+      }
+    }
+  </script>
+</body>
+</html>
